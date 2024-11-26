@@ -34,10 +34,7 @@ export const ChatMessage = ({
                             11:46
                         </span> */}
                 </div>
-                <p
-                    whitespace-pre-line
-                    className="text-sm font-normal py-2.5 text-gray-900 dark:text-white whitespace-pre-line "
-                >
+                <p className="text-sm font-normal py-2.5 text-gray-900 dark:text-white whitespace-pre-line ">
                     {text}
                 </p>
             </div>
