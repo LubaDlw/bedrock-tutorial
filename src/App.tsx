@@ -2,8 +2,8 @@ import { useState } from "react";
 import "./App.css";
 import {
     BedrockRuntimeClient,
-    InvokeModelCommand,
-    InvokeModelCommandOutput,
+    InvokeModelWithResponseStreamCommand,
+    InvokeModelWithResponseStreamCommandOutput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
@@ -27,6 +27,8 @@ function App() {
         { author: MODEL_NAME, text: "How can I help you?" },
     ]);
 
+    const [stream, setStream] = useState<string | null>(null);
+
     const sendResponse = async (prompt: string) => {
         const payload = {
             anthropic_version: "bedrock-2023-05-31",
@@ -37,7 +39,7 @@ function App() {
         };
 
         const apiResponse = await client.send(
-            new InvokeModelCommand({
+            new InvokeModelWithResponseStreamCommand({
                 contentType: "application/json",
                 body: JSON.stringify(payload),
                 modelId: MODEL_ID,
@@ -47,18 +49,31 @@ function App() {
         return apiResponse;
     };
 
-    const parseResponse = (response: InvokeModelCommandOutput) => {
-        const decodedResponseBody = new TextDecoder().decode(response.body);
-        const responseBody = JSON.parse(decodedResponseBody);
-        const responses = responseBody.content;
+    const parseResponse = async (
+        apiResponse: InvokeModelWithResponseStreamCommandOutput
+    ) => {
+        if (!apiResponse.body) return "";
 
-        if (responses.length === 1) {
-            console.log(`Response: ${responses[0].text}`);
-        } else {
-            console.log("Haiku returned multiple responses:");
-            console.log(responses);
+        let completeMessage = "";
+
+        // Decode and process the response stream
+        for await (const item of apiResponse.body) {
+            /** @type Chunk */
+            const chunk = JSON.parse(
+                new TextDecoder().decode(item.chunk?.bytes)
+            );
+            const chunk_type = chunk.type;
+
+            if (chunk_type === "content_block_delta") {
+                const text = chunk.delta.text;
+                setStream(completeMessage + text);
+                completeMessage = completeMessage + text;
+            }
         }
-        return responses[0].text;
+
+        // Return the final response
+        setStream(null);
+        return completeMessage;
     };
 
     const addToHistory = (text: string, author: string) => {
@@ -68,7 +83,7 @@ function App() {
     const onSubmit = async (prompt: string) => {
         addToHistory(prompt, USER_NAME);
         const response = await sendResponse(prompt);
-        const parsedResponse = parseResponse(response);
+        const parsedResponse = await parseResponse(response);
         addToHistory(parsedResponse, MODEL_NAME);
     };
 
@@ -83,6 +98,15 @@ function App() {
                         text={text}
                     />
                 ))}
+
+                {stream && (
+                    <ChatMessage
+                        key={stream}
+                        author={MODEL_NAME}
+                        reverse={false}
+                        text={stream}
+                    />
+                )}
             </div>
 
             <div className="flex items-center justify-between mt-auto h-20 sticky bottom-0 left-0 right-0">
