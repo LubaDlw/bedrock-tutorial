@@ -10,8 +10,8 @@ import { ChatMessage } from "./components/ChatMessage/ChatMessage";
 
 const AWS_REGION = "us-east-1";
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
-const MODEL_NAME = "Claude";
-const USER_NAME = "User";
+const MODEL_NAME = "assistant";
+const USER_NAME = "user";
 
 const client = new BedrockRuntimeClient({
     region: AWS_REGION,
@@ -21,11 +21,13 @@ const client = new BedrockRuntimeClient({
     },
 });
 
+interface IMessage {
+    role: string;
+    content: { type: string; text: string }[];
+}
+
 function App() {
-    const [history, setHistory] = useState<{ author: string; text: string }[]>([
-        { author: USER_NAME, text: "Hello!" },
-        { author: MODEL_NAME, text: "How can I help you?" },
-    ]);
+    const [history, setHistory] = useState<IMessage[]>([]);
 
     const [stream, setStream] = useState<string | null>(null);
 
@@ -34,6 +36,7 @@ function App() {
             anthropic_version: "bedrock-2023-05-31",
             max_tokens: 1000,
             messages: [
+                ...history,
                 { role: "user", content: [{ type: "text", text: prompt }] },
             ],
         };
@@ -76,8 +79,11 @@ function App() {
         return completeMessage;
     };
 
-    const addToHistory = (text: string, author: string) => {
-        setHistory((prev) => [...prev, { text, author }]);
+    const addToHistory = (text: string, role: string) => {
+        setHistory((prev) => [
+            ...prev,
+            { content: [{ type: "text", text }], role },
+        ]);
     };
 
     const onSubmit = async (prompt: string) => {
@@ -90,12 +96,12 @@ function App() {
     return (
         <div className="flex flex-col h-screen p-4">
             <div className="overflow-y-scroll flex-1">
-                {history.map(({ author, text }) => (
+                {history.map(({ role, content }) => (
                     <ChatMessage
-                        key={text}
-                        author={author}
-                        reverse={author === USER_NAME}
-                        text={text}
+                        key={content[0].text}
+                        author={role}
+                        reverse={role === USER_NAME}
+                        text={content[0].text}
                     />
                 ))}
 
