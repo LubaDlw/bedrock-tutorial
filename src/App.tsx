@@ -2,12 +2,15 @@ import { useState } from "react";
 import "./App.css";
 import {
     BedrockRuntimeClient,
+    ContentBlock,
     ConversationRole,
     ConverseStreamCommand,
     ConverseStreamCommandOutput,
+    ImageFormat,
 } from "@aws-sdk/client-bedrock-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
+import { convertFileToUint8Array } from "./utils/utils";
 
 const AWS_REGION = "us-east-1";
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
@@ -24,7 +27,7 @@ const client = new BedrockRuntimeClient({
 
 interface IMessage {
     role: ConversationRole;
-    content: { text: string }[];
+    content: { text: string; file?: File }[];
 }
 
 function App() {
@@ -32,13 +35,33 @@ function App() {
 
     const [stream, setStream] = useState<string | null>(null);
 
-    const sendResponse = async (prompt: string) => {
+    const sendResponse = async (prompt: string, file?: File | null) => {
+        const content: ContentBlock[] = [
+            {
+                text: prompt,
+            },
+        ];
+
+        if (file) {
+            content.push({
+                image: {
+                    format: file?.name.split(".").reverse()[0] as ImageFormat,
+                    source: {
+                        bytes: await convertFileToUint8Array(file),
+                    },
+                },
+            });
+        }
+
         const apiResponse = await client.send(
             new ConverseStreamCommand({
                 modelId: MODEL_ID,
                 messages: [
                     ...history,
-                    { role: "user", content: [{ text: prompt }] },
+                    {
+                        role: "user",
+                        content,
+                    },
                 ],
                 inferenceConfig: {
                     maxTokens: 512,
@@ -74,9 +97,9 @@ function App() {
         setHistory((prev) => [...prev, { content: [{ text }], role }]);
     };
 
-    const onSubmit = async (prompt: string) => {
+    const onSubmit = async (prompt: string, file?: File | null) => {
         addToHistory(prompt, USER_NAME);
-        const response = await sendResponse(prompt);
+        const response = await sendResponse(prompt, file);
         const parsedResponse = await parseResponse(response);
         addToHistory(parsedResponse, MODEL_NAME);
     };
