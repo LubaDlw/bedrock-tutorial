@@ -2,8 +2,9 @@ import { useState } from "react";
 import "./App.css";
 import {
     BedrockRuntimeClient,
-    InvokeModelWithResponseStreamCommand,
-    InvokeModelWithResponseStreamCommandOutput,
+    ConversationRole,
+    ConverseStreamCommand,
+    ConverseStreamCommandOutput,
 } from "@aws-sdk/client-bedrock-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
@@ -22,8 +23,8 @@ const client = new BedrockRuntimeClient({
 });
 
 interface IMessage {
-    role: string;
-    content: { type: string; text: string }[];
+    role: ConversationRole;
+    content: { text: string }[];
 }
 
 function App() {
@@ -32,43 +33,33 @@ function App() {
     const [stream, setStream] = useState<string | null>(null);
 
     const sendResponse = async (prompt: string) => {
-        const payload = {
-            anthropic_version: "bedrock-2023-05-31",
-            max_tokens: 1000,
-            messages: [
-                ...history,
-                { role: "user", content: [{ type: "text", text: prompt }] },
-            ],
-        };
-
         const apiResponse = await client.send(
-            new InvokeModelWithResponseStreamCommand({
-                contentType: "application/json",
-                body: JSON.stringify(payload),
+            new ConverseStreamCommand({
                 modelId: MODEL_ID,
+                messages: [
+                    ...history,
+                    { role: "user", content: [{ text: prompt }] },
+                ],
+                inferenceConfig: {
+                    maxTokens: 512,
+                    temperature: 0.5,
+                    topP: 0.9,
+                },
             })
         );
 
         return apiResponse;
     };
 
-    const parseResponse = async (
-        apiResponse: InvokeModelWithResponseStreamCommandOutput
-    ) => {
-        if (!apiResponse.body) return "";
+    const parseResponse = async (apiResponse: ConverseStreamCommandOutput) => {
+        if (!apiResponse.stream) return "";
 
         let completeMessage = "";
 
         // Decode and process the response stream
-        for await (const item of apiResponse.body) {
-            /** @type Chunk */
-            const chunk = JSON.parse(
-                new TextDecoder().decode(item.chunk?.bytes)
-            );
-            const chunk_type = chunk.type;
-
-            if (chunk_type === "content_block_delta") {
-                const text = chunk.delta.text;
+        for await (const item of apiResponse.stream) {
+            if (item.contentBlockDelta) {
+                const text = item.contentBlockDelta.delta?.text;
                 setStream(completeMessage + text);
                 completeMessage = completeMessage + text;
             }
@@ -79,11 +70,8 @@ function App() {
         return completeMessage;
     };
 
-    const addToHistory = (text: string, role: string) => {
-        setHistory((prev) => [
-            ...prev,
-            { content: [{ type: "text", text }], role },
-        ]);
+    const addToHistory = (text: string, role: ConversationRole) => {
+        setHistory((prev) => [...prev, { content: [{ text }], role }]);
     };
 
     const onSubmit = async (prompt: string) => {
