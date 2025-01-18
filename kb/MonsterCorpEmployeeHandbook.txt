@@ -1,0 +1,28 @@
+Welcome to Monster Corporation!
+
+### Core Values
+1. **Scare the Status Quo**: We challenge everyday norms with daring ideas that might send a chill down the spine.
+2. **Fearless Innovation**: If it doesn’t raise the hairs on your neck, we haven’t gone far enough.
+3. **Nightly Collaboration**: Our best brainstorms happen at midnight. We recommend bringing coffee—and a flashlight.
+
+### Dress Code
+- Monday through Thursday: Smart-casual monster attire. (Fangs, horns, or tentacles optional.)
+- Friday: Full cosplay recommended. Remember, HR has declared that “Zombie Casual” is a valid uniform choice.
+
+### Communication Guidelines
+- Slack channels must use spooky emojis whenever possible.
+  Example: :ghost: for new ideas, :skull: for production issues, and :vampire: for urgent tasks.
+- If you discover a bug, file it under the “Boo-g Reports” channel immediately.
+  Include the phrase “OoOoOps” at the start of your message for escalation.
+
+### Work Hours
+- Official hours are from dusk until dawn, although flexible scheduling is allowed for creatures of the day.
+- All-hands meetings take place during the Witching Hour on Wednesdays.
+  Attendance is mandatory unless you’re a werewolf working from home.
+
+### Performance Reviews
+- Employees who consistently exhibit monstrous creativity earn the coveted “Frightfully Good” rating.
+- Those failing to scare their peers at least once a quarter may be sentenced to “The Dungeon,”
+  a playful 10-minute DevOps fiasco in which you must fix an intentionally corrupted CI pipeline.
+
+Thank you for joining Monster Corporation, where each day is a hair-raising adventure!

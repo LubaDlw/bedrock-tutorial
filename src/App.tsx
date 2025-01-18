@@ -1,11 +1,11 @@
 import { useState } from "react";
 import "./App.css";
+import { ConversationRole } from "@aws-sdk/client-bedrock-runtime";
 import {
-    BedrockRuntimeClient,
-    ConversationRole,
-    ConverseStreamCommand,
-    ConverseStreamCommandOutput,
-} from "@aws-sdk/client-bedrock-runtime";
+    BedrockAgentRuntimeClient,
+    RetrieveAndGenerateStreamCommand,
+    RetrieveAndGenerateStreamResponse,
+} from "@aws-sdk/client-bedrock-agent-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
 
@@ -14,7 +14,7 @@ const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
 const MODEL_NAME = "assistant";
 const USER_NAME = "user";
 
-const client = new BedrockRuntimeClient({
+const client = new BedrockAgentRuntimeClient({
     region: AWS_REGION,
     credentials: {
         accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY,
@@ -33,17 +33,24 @@ function App() {
     const [stream, setStream] = useState<string | null>(null);
 
     const sendResponse = async (prompt: string) => {
+        const content: string = prompt;
+
         const apiResponse = await client.send(
-            new ConverseStreamCommand({
-                modelId: MODEL_ID,
-                messages: [
-                    ...history,
-                    { role: "user", content: [{ text: prompt }] },
-                ],
-                inferenceConfig: {
-                    maxTokens: 512,
-                    temperature: 0.5,
-                    topP: 0.9,
+            new RetrieveAndGenerateStreamCommand({
+                input: {
+                    text: content,
+                },
+                retrieveAndGenerateConfiguration: {
+                    type: "KNOWLEDGE_BASE",
+                    knowledgeBaseConfiguration: {
+                        knowledgeBaseId: "XBRUYGFGOA",
+                        modelArn: MODEL_ID,
+                        retrievalConfiguration: {
+                            vectorSearchConfiguration: {
+                                numberOfResults: 5,
+                            },
+                        },
+                    },
                 },
             })
         );
@@ -51,15 +58,17 @@ function App() {
         return apiResponse;
     };
 
-    const parseResponse = async (apiResponse: ConverseStreamCommandOutput) => {
+    const parseResponse = async (
+        apiResponse: RetrieveAndGenerateStreamResponse
+    ) => {
         if (!apiResponse.stream) return "";
 
         let completeMessage = "";
 
         // Decode and process the response stream
         for await (const item of apiResponse.stream) {
-            if (item.contentBlockDelta) {
-                const text = item.contentBlockDelta.delta?.text;
+            if (item.output) {
+                const text = item.output.text;
                 setStream(completeMessage + text);
                 completeMessage = completeMessage + text;
             }
@@ -77,6 +86,7 @@ function App() {
     const onSubmit = async (prompt: string) => {
         addToHistory(prompt, USER_NAME);
         const response = await sendResponse(prompt);
+        console.log({ response });
         const parsedResponse = await parseResponse(response);
         addToHistory(parsedResponse, MODEL_NAME);
     };
@@ -89,7 +99,7 @@ function App() {
                         key={content[0].text}
                         author={role}
                         reverse={role === USER_NAME}
-                        text={content[0].text}
+                        text={content[0].text || ""}
                     />
                 ))}
 
