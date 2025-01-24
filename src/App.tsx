@@ -1,20 +1,22 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import {
     BedrockRuntimeClient,
     ContentBlock,
     ConversationRole,
-    ConverseStreamCommand,
-    ConverseStreamCommandOutput,
+    ConverseCommand,
+    ConverseCommandOutput,
     ImageFormat,
+    Message,
+    ToolResultStatus,
 } from "@aws-sdk/client-bedrock-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
 import { convertFileToUint8Array } from "./utils/utils";
+import { toolsSchema } from "./tools";
 
 const AWS_REGION = "us-east-1";
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
-const MODEL_NAME = "assistant";
 const USER_NAME = "user";
 
 const client = new BedrockRuntimeClient({
@@ -25,22 +27,104 @@ const client = new BedrockRuntimeClient({
     },
 });
 
-interface IMessage {
-    role: ConversationRole;
-    content: { text: string; file?: File }[];
-}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+const tools: Record<string, Function> = {
+    sumOfTwoNumbers: ({ x, y }: { x: number; y: number }) => {
+        return x + y;
+    },
+    getCurrencyRates: async ({ baseCurrency }: { baseCurrency: string }) => {
+        const rates = await fetch(
+            `https://api.vatcomply.com/rates?base=${baseCurrency}`
+        );
+        return await rates.json();
+    },
+};
 
 function App() {
-    const [history, setHistory] = useState<IMessage[]>([]);
+    const [history, setHistory] = useState<Message[]>([]);
 
-    const [stream, setStream] = useState<string | null>(null);
+    const parseResponse = useCallback(
+        async (apiResponse: ConverseCommandOutput) => {
+            const tempHistory = [...history];
+            if (
+                apiResponse?.output?.message &&
+                apiResponse?.stopReason !== "tool_use"
+            ) {
+                tempHistory.push(apiResponse?.output?.message);
+            }
 
-    const sendResponse = async (prompt: string, file?: File | null) => {
-        const content: ContentBlock[] = [
-            {
-                text: prompt,
-            },
-        ];
+            if (apiResponse?.stopReason === "tool_use") {
+                const toolUse = apiResponse?.output?.message?.content?.find(
+                    (block) => block.toolUse
+                )?.toolUse;
+
+                if (toolUse) {
+                    tempHistory.push({
+                        content: [{ toolUse }],
+                        role: ConversationRole.ASSISTANT,
+                    });
+                    const toolResult = await tools[toolUse.name as string](
+                        toolUse.input
+                    );
+
+                    tempHistory.push({
+                        role: ConversationRole.USER,
+                        content: [
+                            {
+                                toolResult: {
+                                    toolUseId: toolUse.toolUseId,
+                                    content: [
+                                        {
+                                            json: { results: toolResult },
+                                        },
+                                    ],
+                                    status: ToolResultStatus.SUCCESS,
+                                },
+                            },
+                        ],
+                    });
+                    const response = await sendResponse(tempHistory ?? []);
+                    await parseResponse(response);
+                }
+            }
+
+            setHistory([...tempHistory]);
+        },
+        [history]
+    );
+
+    useEffect(() => {
+        const lastMessage = history[history.length - 1];
+        const callModel = async (messages: Message[]) => {
+            const response = await sendResponse([...messages]);
+            await parseResponse(response);
+        };
+        if (lastMessage?.role === ConversationRole.USER) {
+            callModel(history);
+        }
+    }, [history, parseResponse]);
+
+    const sendResponse = async (messages: Message[]) => {
+        const apiResponse = await client.send(
+            new ConverseCommand({
+                modelId: MODEL_ID,
+                messages: messages,
+                inferenceConfig: {
+                    maxTokens: 512,
+                    temperature: 0.5,
+                    topP: 0.9,
+                },
+                toolConfig: {
+                    tools: toolsSchema,
+                },
+            })
+        );
+
+        return apiResponse;
+    };
+
+    const onSubmit = async (prompt: string, file?: File | null) => {
+        const content: ContentBlock[] = [{ text: prompt }];
 
         if (file) {
             content.push({
@@ -53,77 +137,32 @@ function App() {
             });
         }
 
-        const apiResponse = await client.send(
-            new ConverseStreamCommand({
-                modelId: MODEL_ID,
-                messages: [
-                    ...history,
-                    {
-                        role: "user",
-                        content,
-                    },
-                ],
-                inferenceConfig: {
-                    maxTokens: 512,
-                    temperature: 0.5,
-                    topP: 0.9,
-                },
-            })
-        );
-
-        return apiResponse;
-    };
-
-    const parseResponse = async (apiResponse: ConverseStreamCommandOutput) => {
-        if (!apiResponse.stream) return "";
-
-        let completeMessage = "";
-
-        // Decode and process the response stream
-        for await (const item of apiResponse.stream) {
-            if (item.contentBlockDelta) {
-                const text = item.contentBlockDelta.delta?.text;
-                setStream(completeMessage + text);
-                completeMessage = completeMessage + text;
-            }
-        }
-
-        // Return the final response
-        setStream(null);
-        return completeMessage;
-    };
-
-    const addToHistory = (text: string, role: ConversationRole) => {
-        setHistory((prev) => [...prev, { content: [{ text }], role }]);
-    };
-
-    const onSubmit = async (prompt: string, file?: File | null) => {
-        addToHistory(prompt, USER_NAME);
-        const response = await sendResponse(prompt, file);
-        const parsedResponse = await parseResponse(response);
-        addToHistory(parsedResponse, MODEL_NAME);
+        setHistory((prev) => [
+            ...prev,
+            {
+                content,
+                role: USER_NAME,
+            },
+        ]);
     };
 
     return (
         <div className="flex flex-col h-screen p-4">
             <div className="overflow-y-scroll flex-1">
-                {history.map(({ role, content }) => (
-                    <ChatMessage
-                        key={content[0].text}
-                        author={role}
-                        reverse={role === USER_NAME}
-                        text={content[0].text}
-                    />
-                ))}
-
-                {stream && (
-                    <ChatMessage
-                        key={stream}
-                        author={MODEL_NAME}
-                        reverse={false}
-                        text={stream}
-                    />
-                )}
+                {history.map(({ role, content }) => {
+                    return content?.map((contentBlock) => {
+                        if (contentBlock.text) {
+                            return (
+                                <ChatMessage
+                                    key={contentBlock.text}
+                                    author={role || ""}
+                                    reverse={role === USER_NAME}
+                                    text={contentBlock.text || ""}
+                                />
+                            );
+                        }
+                    });
+                })}
             </div>
 
             <div className="flex items-center justify-between mt-auto h-20 sticky bottom-0 left-0 right-0">
