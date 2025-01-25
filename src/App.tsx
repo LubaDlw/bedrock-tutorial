@@ -3,14 +3,13 @@ import "./App.css";
 import { ConversationRole } from "@aws-sdk/client-bedrock-runtime";
 import {
     BedrockAgentRuntimeClient,
-    RetrieveAndGenerateStreamCommand,
-    RetrieveAndGenerateStreamResponse,
+    InvokeAgentCommand,
+    InvokeAgentCommandOutput,
 } from "@aws-sdk/client-bedrock-agent-runtime";
 import { ChatInput } from "./components/ChatInput/ChatInput";
 import { ChatMessage } from "./components/ChatMessage/ChatMessage";
 
 const AWS_REGION = "us-east-1";
-const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
 const MODEL_NAME = "assistant";
 const USER_NAME = "user";
 
@@ -36,41 +35,30 @@ function App() {
         const content: string = prompt;
 
         const apiResponse = await client.send(
-            new RetrieveAndGenerateStreamCommand({
-                input: {
-                    text: content,
-                },
-                retrieveAndGenerateConfiguration: {
-                    type: "KNOWLEDGE_BASE",
-                    knowledgeBaseConfiguration: {
-                        knowledgeBaseId: "XBRUYGFGOA",
-                        modelArn: MODEL_ID,
-                        retrievalConfiguration: {
-                            vectorSearchConfiguration: {
-                                numberOfResults: 5,
-                            },
-                        },
-                    },
-                },
+            new InvokeAgentCommand({
+                inputText: content,
+                agentId: "IPYDCM4FPA",
+                agentAliasId: "AM0UMXPNZP",
+                sessionId: "123",
             })
         );
 
         return apiResponse;
     };
 
-    const parseResponse = async (
-        apiResponse: RetrieveAndGenerateStreamResponse
-    ) => {
-        if (!apiResponse.stream) return "";
+    const parseResponse = async (apiResponse: InvokeAgentCommandOutput) => {
+        if (!apiResponse.completion) return "";
 
         let completeMessage = "";
 
         // Decode and process the response stream
-        for await (const item of apiResponse.stream) {
-            if (item.output) {
-                const text = item.output.text;
-                setStream(completeMessage + text);
-                completeMessage = completeMessage + text;
+        for await (const item of apiResponse.completion) {
+            if (item.chunk) {
+                const text = item.chunk;
+                const decoded = new TextDecoder("utf-8").decode(text.bytes);
+
+                setStream(completeMessage + decoded);
+                completeMessage = completeMessage + decoded;
             }
         }
 
