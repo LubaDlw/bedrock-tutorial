@@ -3,6 +3,7 @@ import "./App.css";
 import { ConversationRole } from "@aws-sdk/client-bedrock-runtime";
 import {
     BedrockAgentRuntimeClient,
+    CitationEvent,
     RetrieveAndGenerateStreamCommand,
     RetrieveAndGenerateStreamResponse,
 } from "@aws-sdk/client-bedrock-agent-runtime";
@@ -25,6 +26,7 @@ const client = new BedrockAgentRuntimeClient({
 interface IMessage {
     role: ConversationRole;
     content: { text: string }[];
+    references?: CitationEvent[];
 }
 
 function App() {
@@ -43,7 +45,7 @@ function App() {
                 retrieveAndGenerateConfiguration: {
                     type: "KNOWLEDGE_BASE",
                     knowledgeBaseConfiguration: {
-                        knowledgeBaseId: "XBRUYGFGOA",
+                        knowledgeBaseId: "3J7YHPSERN",
                         modelArn: MODEL_ID,
                         retrievalConfiguration: {
                             vectorSearchConfiguration: {
@@ -61,9 +63,10 @@ function App() {
     const parseResponse = async (
         apiResponse: RetrieveAndGenerateStreamResponse
     ) => {
-        if (!apiResponse.stream) return "";
+        if (!apiResponse.stream) return { response: "" };
 
         let completeMessage = "";
+        const citations = [];
 
         // Decode and process the response stream
         for await (const item of apiResponse.stream) {
@@ -72,34 +75,50 @@ function App() {
                 setStream(completeMessage + text);
                 completeMessage = completeMessage + text;
             }
+
+            if (item.citation) {
+                const citation = item.citation;
+                citations.push(citation);
+            }
         }
 
         // Return the final response
         setStream(null);
-        return completeMessage;
+        return { response: completeMessage, citations };
     };
 
-    const addToHistory = (text: string, role: ConversationRole) => {
-        setHistory((prev) => [...prev, { content: [{ text }], role }]);
+    const addToHistory = (
+        text: string,
+        role: ConversationRole,
+        references?: CitationEvent[]
+    ) => {
+        setHistory((prev) => [
+            ...prev,
+            { content: [{ text }], role, references },
+        ]);
     };
 
     const onSubmit = async (prompt: string) => {
         addToHistory(prompt, USER_NAME);
         const response = await sendResponse(prompt);
-        console.log({ response });
         const parsedResponse = await parseResponse(response);
-        addToHistory(parsedResponse, MODEL_NAME);
+        addToHistory(
+            parsedResponse.response,
+            MODEL_NAME,
+            parsedResponse.citations
+        );
     };
 
     return (
         <div className="flex flex-col h-screen p-4">
             <div className="overflow-y-scroll flex-1">
-                {history.map(({ role, content }) => (
+                {history.map(({ role, content, references }) => (
                     <ChatMessage
                         key={content[0].text}
                         author={role}
                         reverse={role === USER_NAME}
                         text={content[0].text || ""}
+                        references={references}
                     />
                 ))}
 

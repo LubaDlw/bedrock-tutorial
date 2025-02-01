@@ -1,7 +1,10 @@
+import { CitationEvent } from "@aws-sdk/client-bedrock-agent-runtime";
+
 interface ChatMessageProps {
     text: string;
     author: string;
     reverse?: boolean;
+    references?: CitationEvent[];
 }
 
 const borderRadiusClasses = "rounded-e-xl rounded-es-xl";
@@ -11,7 +14,9 @@ export const ChatMessage = ({
     text,
     author,
     reverse = false,
+    references,
 }: ChatMessageProps) => {
+    console.log({ references });
     return (
         <div
             className={`flex items-start gap-2.5 ${
@@ -37,6 +42,22 @@ export const ChatMessage = ({
                 <p className="text-sm font-normal py-2.5 text-gray-900 dark:text-white whitespace-pre-line ">
                     {text}
                 </p>
+
+                {references?.length ? (
+                    <div>
+                        {" "}
+                        <p>References:</p>
+                        <ul>
+                            {references.map((ref) => {
+                                return ref.citation?.retrievedReferences?.map(
+                                    (citation) => (
+                                        <li>{citation.content?.text}</li>
+                                    )
+                                );
+                            })}
+                        </ul>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
